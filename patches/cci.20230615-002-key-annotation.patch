@@ -1,0 +1,199 @@
+From 2085c94c033d5ee9c73d64716957596a9d37480a Mon Sep 17 00:00:00 2001
+From: Joakim Haugen <joakim.haugen@sintef.no>
+Date: Fri, 8 Dec 2023 18:29:30 +0100
+Subject: [PATCH] Work on key annotation
+
+---
+ include/xtypes/idl/grammar.hpp      | 12 +++---
+ include/xtypes/idl/parser.hpp       | 57 ++++++++++++++++++++++++++++-
+ test/unitary/parser/parser_test.cpp | 32 ++++++++++++++++
+ 3 files changed, 93 insertions(+), 8 deletions(-)
+
+diff --git a/include/xtypes/idl/grammar.hpp b/include/xtypes/idl/grammar.hpp
+index 5b144ce..8abffae 100644
+--- a/include/xtypes/idl/grammar.hpp
++++ b/include/xtypes/idl/grammar.hpp
+@@ -34,7 +34,7 @@ DOCUMENT <- WS? SPECIFICATION WS?
+ SPECIFICATION <- DEFINITION+
+ DEFINITION <- (MODULE_DCL / CONST_DCL / TYPE_DCL / ANNOTATION_DCL) SEMICOLON / PREPROCESSOR_DIRECTIVE
+ 
+-MODULE_DCL <- (ANNOTATION_APPL)* KW_MODULE IDENTIFIER OPEN_BRACE DEFINITION+ CLOSE_BRACE
++MODULE_DCL <- (ANNOTATION_APPL WS?)* KW_MODULE IDENTIFIER OPEN_BRACE DEFINITION+ CLOSE_BRACE
+ #SCOPED_NAME <- DOUBLE_COLON IDENTIFIER / (IDENTIFIER DOUBLE_COLON)* IDENTIFIER
+ SCOPED_NAME <- < IDENTIFIER DOUBLE_COLON SCOPED_NAME / DOUBLE_COLON SCOPED_NAME / IDENTIFIER >
+ 
+@@ -136,11 +136,11 @@ STRING_SIZE <- OPEN_ANG_BRACKET < POSITIVE_INT_CONST > CLOSE_ANG_BRACKET
+ WSTRING_SIZE <- OPEN_ANG_BRACKET < POSITIVE_INT_CONST > CLOSE_ANG_BRACKET
+ COLLECTION_SIZE <- COMMA POSITIVE_INT_CONST
+ 
+-CONSTR_TYPE_DLC <- (ANNOTATION_APPL)* (STRUCT_DCL / UNION_DCL / ENUM_DCL / BITSET_DCL / BITMASK_DCL)
++CONSTR_TYPE_DLC <- (ANNOTATION_APPL WS?)* (STRUCT_DCL / UNION_DCL / ENUM_DCL / BITSET_DCL / BITMASK_DCL)
+ STRUCT_DCL <- STRUCT_DEF / STRUCT_FORWARD_DCL
+ STRUCT_DEF <- KW_STRUCT IDENTIFIER INHERITANCE? OPEN_BRACE MEMBER* CLOSE_BRACE
+ INHERITANCE <- COLON SCOPED_NAME
+-MEMBER <- (ANNOTATION_APPL)* TYPE_SPEC DECLARATORS SEMICOLON
++MEMBER <- (ANNOTATION_APPL WS?)* TYPE_SPEC DECLARATORS SEMICOLON
+ STRUCT_FORWARD_DCL <- KW_STRUCT < IDENTIFIER >
+ UNION_DCL <- UNION_DEF / UNION_FORWARD_DCL
+ UNION_DEF <- KW_UNION IDENTIFIER KW_SWITCH OPEN_PARENTHESES SWITCH_TYPE_SPEC CLOSE_PARENTHESES
+@@ -149,10 +149,10 @@ SWITCH_TYPE_SPEC <- INTEGER_TYPE / CHAR_TYPE / BOOLEAN_TYPE / WIDE_CHAR_TYPE / O
+ SWITCH_BODY <- CASE+
+ CASE <- CASE_LABEL+ ELEMENT_SPEC SEMICOLON
+ CASE_LABEL <- KW_CASE < CONST_EXPR > COLON / < KW_DEFAULT > COLON
+-ELEMENT_SPEC <- (ANNOTATION_APPL)* TYPE_SPEC DECLARATOR
++ELEMENT_SPEC <- (ANNOTATION_APPL WS?)* TYPE_SPEC DECLARATOR
+ UNION_FORWARD_DCL <- KW_UNION < IDENTIFIER >
+ ENUM_DCL <- KW_ENUM IDENTIFIER OPEN_BRACE ENUMERATOR (COMMA ENUMERATOR)* CLOSE_BRACE
+-ENUMERATOR <- (ANNOTATION_APPL)* IDENTIFIER
++ENUMERATOR <- (ANNOTATION_APPL WS?)* IDENTIFIER
+ ARRAY_DECLARATOR <- IDENTIFIER FIXED_ARRAY_SIZE+
+ FIXED_ARRAY_SIZE <- OPEN_BRACKET POSITIVE_INT_CONST CLOSE_BRACKET
+ NATIVE_DCL <- KW_NATIVE SIMPLE_DECLARATOR
+@@ -170,7 +170,7 @@ MAP_INNER_TYPE <- TYPE_SPEC
+ MAP_KEY_TYPE <- TYPE_SPEC
+ MAP_SIZE <- COLLECTION_SIZE?
+ BITSET_DCL <- KW_BITSET IDENTIFIER INHERITANCE? OPEN_BRACE BITFIELD* CLOSE_BRACE
+-BITFIELD <- (ANNOTATION_APPL)* BITFIELD_SPEC IDENTIFIER* SEMICOLON
++BITFIELD <- (ANNOTATION_APPL WS?)* BITFIELD_SPEC IDENTIFIER* SEMICOLON
+ BITFIELD_SPEC <- KW_BITFIELD OPEN_ANG_BRACKET POSITIVE_INT_CONST (COMMA DESTINATION_TYPE)? CLOSE_ANG_BRACKET
+ DESTINATION_TYPE <- BOOLEAN_TYPE / OCTET_TYPE / INTEGER_TYPE
+ BITMASK_DCL <- KW_BITMASK IDENTIFIER OPEN_BRACE BIT_VALUE (COMMA BIT_VALUE)* CLOSE_BRACE
+diff --git a/include/xtypes/idl/parser.hpp b/include/xtypes/idl/parser.hpp
+index 0d0796c..03763d8 100644
+--- a/include/xtypes/idl/parser.hpp
++++ b/include/xtypes/idl/parser.hpp
+@@ -1862,18 +1862,63 @@ private:
+     {
+         using namespace peg::udl;
+         DynamicType::Ptr type;
++        Member annotation("annotation", primitive_type<bool>());
+ 
+         for (const auto& node : ast->nodes)
+         {
+             switch (node->original_tag)
+             {
++                case "ANNOTATION_APPL"_:
++                  if(node->is_token) {
++                    if (node->token == "key") {
++                      annotation.key(true);
++                    } else if (node->token == "optional") {
++                      annotation.optional(true);
++                    }
++                  }
++                  else {
++                    bool known_annotation = true;
++                    // Hard-coded support for @id
++                    for (const auto& inner : node->nodes) {
++                      if (!known_annotation) { break; }
++                      switch (inner->original_tag)
++                      {
++                      case "SCOPED_NAME"_:
++                        if(!(inner->is_token && inner->token == "id")) {
++                          known_annotation = false;
++                        }
++                        break;
++                      case "ANNOTATION_APPL_PARAMS"_:
++                        if(inner->is_token) {
++                          switch(inner->tag) {
++                          case "INTEGER_LITERAL"_:
++                          {
++                            std::int32_t idval = std::stoi(inner->token.data());
++                            annotation.id(idval);
++                            break;
++                          }
++                          default:
++                            context_->log(log::LogLevel::xERROR, "EXCEPTION",
++                             "Only a positive integer number can be used as annotation id value.",
++                             node);
++                            throw exception("Only a positive integer number can be used as annotation id value.", node);
++                            break;
++                          }
++                        }
++                        break;
++                      default:
++                        break;
++                      }
++                    }
++                  }
++                  break;
+                 case "TYPE_SPEC"_:
+                     type = type_spec(node, outer);
+                     break;
+                 case "DECLARATORS"_:
+                     if (type.get() != nullptr)
+                     {
+-                        members(node, outer, type, result);
++                        members(node, outer, type, annotation, result);
+                     }
+                     break;
+             }
+@@ -2122,6 +2167,7 @@ private:
+             const std::shared_ptr<peg::Ast>& ast,
+             std::shared_ptr<Module>& outer,
+             const DynamicType::Ptr type,
++            Member& annotation,
+             std::vector<Member>& result)
+     {
+         using namespace peg::udl;
+@@ -2153,7 +2199,14 @@ private:
+             }
+             if (dimensions.empty())
+             {
+-                result.emplace_back(Member(name, *type));
++                result.emplace_back(Member(name, *type).key(
++                     annotation.is_key()).optional(
++                         annotation.is_optional()).id(
++                             annotation.get_id()));
++                // Reset annotation
++                annotation.key(false);
++                annotation.optional(false);
++                annotation.id(-1);
+             }
+             else
+             {
+diff --git a/test/unitary/parser/parser_test.cpp b/test/unitary/parser/parser_test.cpp
+index 8e7ae95..e8ad3ed 100644
+--- a/test/unitary/parser/parser_test.cpp
++++ b/test/unitary/parser/parser_test.cpp
+@@ -1589,6 +1589,38 @@ TEST (IDLParser, same_struct_id_in_different_modules)
+     EXPECT_EQ(first_struct.get()->name(), "a::b::c::MyStruct");
+ }
+ 
++TEST (IDLParser, member_annotations)
++{
++  Context context = parse(
++      R"(
++        module a
++        {
++            enum MyEnum { AAA, BBB };
++
++            struct AnnotationStruct
++            {
++                @key uint32 index;
++                @optional boolean value;
++                @id(42) int32 id;
++                @optional @id(44) string id2;
++                @key MyEnum enumber;
++            };
++        };
++                   )");
++
++  std::map<std::string, DynamicType::Ptr> result = context.get_all_scoped_types();
++  EXPECT_EQ(2, result.size());
++
++  const StructType* my_struct = static_cast<const StructType*>(result["a::AnnotationStruct"].get());
++  ASSERT_NE(my_struct, nullptr);
++  ASSERT_TRUE(my_struct->member("index").is_key());
++  ASSERT_TRUE(my_struct->member("value").is_optional());
++  ASSERT_EQ(my_struct->member("id").get_id(), 42);
++  ASSERT_EQ(my_struct->member("id2").get_id(), 44);
++  ASSERT_TRUE(my_struct->member("id2").is_optional());
++  ASSERT_TRUE(my_struct->member("enumber").is_key());
++}
++
+ int main(
+         int argc,
+         char** argv)
+-- 
+2.30.2
+
