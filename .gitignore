@@ -1,0 +1,9 @@
+*~
+test_package/build/
+*.pyc
+*.swp
+*.swo
+__pycache__
+temp/
+CMakeUserPresets.json
+build/

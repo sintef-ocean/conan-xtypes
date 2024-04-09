@@ -1,0 +1,13 @@
+sources:
+  "cci.20230615":
+    commit: "16eb3fed587c2c670096c109e76f9faea1bd80e8"
+    url: "https://github.com/eProsima/xtypes.git"
+patches:
+  "cci.20230615":
+    - patch_file: "patches/cci.20230615-001-use-conan-dependency-cpp-peglib.patch"
+      patch_description: "Use cpp-peglib from conan instead of downloading in CMake"
+      patch_type: "conan"
+    - patch_file: "patches/cci.20230615-002-key-annotation.patch"
+      patch-description: "Hack to allow key annotations through idl parsing"
+      patch_type: "bugfix"
+      patch_source: "https://github.com/eProsima/xtypes/issues/114"

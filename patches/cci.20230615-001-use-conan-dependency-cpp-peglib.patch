@@ -1,0 +1,62 @@
+From 0f10d488dbd224d48bbeab121f43cccca2aaf0dc Mon Sep 17 00:00:00 2001
+From: Joakim Haugen <joakim.haugen@sintef.no>
+Date: Wed, 21 Jun 2023 12:33:38 +0200
+Subject: [PATCH] Use cpp-peglib from conan
+
+---
+ CMakeLists.txt | 22 ++--------------------
+ 1 file changed, 2 insertions(+), 20 deletions(-)
+
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 2837cf5..aafe029 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -40,7 +40,7 @@ if(ENABLE_WER)
+     set(WER_TIMEOUT_TIME 10)
+ endif()
+ 
+-set(XTYPES_PEGLIB_VERSION "master" CACHE STRING "yhirose/cpp-peglib version to use.")
++find_package(peglib CONFIG REQUIRED)
+
+ set(THREADS_PREFER_PTHREAD_FLAG ON)
+ find_package(Threads REQUIRED)
+@@ -57,35 +57,17 @@ elseif(MSVC)
+     target_link_libraries(xtypes INTERFACE Dbghelp.lib)
+ endif()
+ 
+-# Download the cpp-peglib header file needed
+-file(DOWNLOAD
+-        https://raw.githubusercontent.com/yhirose/cpp-peglib/${XTYPES_PEGLIB_VERSION}/peglib.h
+-        ${PROJECT_BINARY_DIR}/thirdparty/cpp-peglib/peglib.h
+-    )
+-
+ target_include_directories(xtypes
+     INTERFACE
+         $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
+-        $<BUILD_INTERFACE:${PROJECT_BINARY_DIR}/thirdparty/cpp-peglib>
+         $<INSTALL_INTERFACE:include>
+-        $<INSTALL_INTERFACE:thirdparty/cpp-peglib/include>
+     )
+
++target_link_libraries(xtypes INTERFACE peglib)
+ target_compile_features(xtypes INTERFACE cxx_std_17 cxx_variadic_macros)
+ 
+ if(MSVC)
+ 
+-    # MSVC always returns __cplusplus = 199711 unles we use the flag /Zc:__cplusplus then it follows the GNU behavior
+-    execute_process(COMMAND
+-        powershell -Command "$binarydir = \"${PROJECT_BINARY_DIR}\";" [=[
+-            $header = gi "$binarydir/thirdparty/cpp-peglib/peglib.h";
+-            (Get-Content -Encoding UTF8 -Path $header |
+-            % { $_ -replace '__cplusplus', '_MSVC_LANG' } ) |
+-            Set-Content -Encoding UTF8 -Path $header
+-            ]=]
+-        WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
+-       )
+-
+     # Preprocessor:
+     #  target_compile_features() only enforces standard values like cxx_std_17. All other values like
+     #  cxx_variadic_macros are not enforced using flags but only will generate an error if not available.
+-- 
+2.30.2
+
