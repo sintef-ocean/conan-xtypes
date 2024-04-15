@@ -20,7 +20,7 @@ jobs:
         build_type: [Debug, Release]
         profile: [gcc]
         compiler_version: [10, 11, 12]
-        channel: ["${{ (github.head_ref || github.ref_name) == 'master' && 'stable' || 'testing' }}"]
+        channel: ["${{ (github.head_ref || github.ref_name) == 'main' && 'stable' || 'testing' }}"]
     container:
       image: conanio/gcc${{ matrix.compiler_version }}-ubuntu18.04
       options: -u 0
