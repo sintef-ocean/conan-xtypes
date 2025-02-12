@@ -42,7 +42,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install prerequisites
-         run: |
+        run: |
           apt-get update
           apt-get install -y jq pipx build-essential cmake git
           pipx install conan
