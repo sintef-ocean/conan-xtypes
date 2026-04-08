@@ -40,7 +40,7 @@ jobs:
       image: ${{ matrix.linux }}
       options: -u 0
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Install prerequisites
         run: |
           apt-get update
@@ -56,11 +56,13 @@ jobs:
           conan config install ${{ env.CONFIG_URL }}  --type git -sf profiles -tf profiles
       - name: Conan create
         run: |
-          conan create -s build_type=${{ matrix.build_type }} \
-            -s compiler.version=${{ matrix.compiler_version }} \
+          conan create -s:h build_type=${{ matrix.build_type }} \
+            -s:b build_type=${{ matrix.build_type }} \
+            -s:h compiler.version=${{ matrix.compiler_version }} \
+            -s:b compiler.version=${{ matrix.compiler_version }} \
             -pr:b=${{ matrix.profile }} -pr:h=${{ matrix.profile }} \
             --conf tools.build:skip_test=False \
             --version ${{ matrix.version }} --user sintef --channel ${{ matrix.channel }} \
             -b missing -b outdated -b ${{ env.pkg_name }}* .
       - name: Conan upload
-        run: conan upload --confirm -r sintef ${{ env.pkg_name }}* --force
+        run: conan upload --confirm -r sintef ${{ env.pkg_name }}*
